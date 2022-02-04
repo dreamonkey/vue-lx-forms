@@ -2,8 +2,8 @@
 
 It reads as "Vue Helix Forms", named after the DNA helix from which we borrow some concepts.
 
-We start from a declarative configuration (the DNA helix, mapping genetic instructions to biological "features") of generic "descriptors" (the nucleobases), then collect user defined bindings with components (the complementary bases) meant to render them. \\
-`lx-resolver` component (acting as the RNA primer) accepts the configuration as input and, sewing descriptors and components together, render the form (which represent the "biological result" encoded into the DNA). \\
+We start from a declarative configuration (the DNA helix, mapping genetic instructions to biological "features") of generic "descriptors" (the nucleobases), then collect user defined bindings with components (the complementary bases) meant to render them.  
+`lx-resolver` component (acting as the RNA primer) accepts the configuration as input and, sewing descriptors and components together, render the form (which represent the "biological result" encoded into the DNA).  
 The user can mutate the internal state via form fields (environment-induced DNA mutations), the configuration will then adapt to these changes and show/hide form components accordingly.
 
 Technically speaking, this is a form builder following a bring-your-components approach, but is flexible and extensible enough to render any kind of state driven component tree.
