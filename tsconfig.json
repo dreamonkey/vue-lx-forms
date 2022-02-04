@@ -6,7 +6,9 @@
     "sourceMap": true,
     "target": "esnext",
     "moduleResolution": "node",
-    "module": "esnext"
+    "module": "esnext",
+    // TODO: needed for "resolver.vue", until we transform it to a render function or find a way to compile it during build
+    "allowJs": true
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

@@ -9,7 +9,7 @@
   />
 </template>
 
-<script lang="ts">
+<script>
 import { defineComponent } from 'vue';
 import { useDescriptorProps } from './field';
 import { getBindingByDescriptorType } from './register';
