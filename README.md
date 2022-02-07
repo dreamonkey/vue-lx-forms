@@ -225,68 +225,198 @@ export default defineComponent({
 </template>
 ```
 
-<!-- TODO: ----- done up to here
-
 ## Core concepts
 
-### Descriptors and components creation
+### Internal state
 
-Make it work > make it fast > make it beautiful
+Each `Descriptor` uses a reactive variable to store the data provided by the user, which is actually an hook to property of a reactive shared state object.
+The shared state is generated from the initial state you provide to `useLxForms`, thus which properties you define there is important: always initialize optional properties to `undefined` if you need the system to react to changes on them.
 
-When having trouble abstracting it into the descriptor from the start, write everything into the component, then split concerns into composables and use custom descriptor descriptors properties or global properties to abstract it
+The reactive state is returned by `useLxForms` as `state` so you can tamper with it programmatically.
+Note that ideally `state` should only be mutated indirectly via models provided to each descriptor, and we only provide it as an escape hatch for complex scenarios.
+Take care if you find yourself tampering the `state` directly often, are you're probably using the system in the wrong way.
 
-At the end of the process, components should contain only the logic needed to display and interact with descriptor, not the logic
+Since `state` is a very generic name, we suggest you to always rename it to make it clear of which entity that state is holding data, keeping `State` suffix to let devs know it's the low level reactive object.
+
+```ts
+const { state: orderState } = useLxForms(/* ... */);
+
+orderState.food = 'Pizza';
+```
+
+### Result
+
+Whenever you need to extract the current configuration data, you should use the `result` computed property provided by `useLxForms`.
+You can think of `result` as a cleaned up version of `state`, where the data for all unused fields is left aside.
+
+Here're the main differences between `result` and `state`:
+
+- `result` is a computed ref, thus it's readonly and its value should be accessed via `result.value`, while `state` is a writable reactive object;
+- `result` will only contain properties bound to displayed fields, while `state` contains all properties present in the initial object;
+
+Since `result` is a very generic name, we suggest you to always rename it to make it clear of which entity you're representing an instance.
+
+```ts
+const { result: order } = useLxForms(/* ... */);
+
+console.log(order.value); // { food: 'Pizza', ... }
+```
 
 ### Descriptor
 
-TODO: add link to base descriptor descriptor interface
+Descriptors are the building blocks of the whole system.
+Ideally, each descriptor should hold all information bits and GUI-independent code which will later be needed by a component when rendering it as part of the whole form.
+
+Ideally, a descriptor should not care about the GUI-related code and stick to higher level abstractions, as updating bindings to use different sets of components should result in different GUIs without needing changes to the descriptors.
+
+At its bare minimul, each descriptor must have:
+
+- an `id`, used by Vue to distinguish between `LxResolver` instances, which is automatically filled in when using `createDescriptor`;
+- a `type`, used by `LxResolver` to decide which component to render, which can be a simple string, an enum or even a symbol;
+- a `label`, since almost all fields of a form always have a title or label of some kind;
+- a `model`, which must be a reactive ref, even if initialized to `undefined`.
+
+You can also provide a custom `component` option to override/manually specify which component should be used to render the descriptor.
+
+You should bind descriptor types to a component using `registerDescriptor`, `registerDescriptors` or the second argument of the plugin installation function.
 
 ```ts
-{
-  id: string; // Automatically generated
-  type: DescriptorType;
-  component?: Component;
-  label: string;
-  model: Ref<Model | undefined>;
+const binding: Binding = {
+  type: 'text',
+  component: TextField,
+};
+
+const bindings: Binding[] = [
+  {
+    type: 'select',
+    component: SelectField,
+  },
+  {
+    type: 'checkbox',
+    component: CheckboxField,
+  },
+];
+
+// Register a single descriptor
+registerDescriptor(binding);
+
+// Register multiple descriptors
+registerDescriptors(bindings);
+
+// Register multiple descriptors when installing the plugin
+app.use(LxForms, bindings);
+```
+
+It's fine to have multiple descriptors types bound to a single component, provided that it's able to manage all of them correctly.
+Eg. text, textarea and password descriptor types can usually be managed by the same component.
+
+```ts
+const binding: Binding = {
+  type: ['text', 'textarea', 'password'],
+  component: TextLikeField,
+};
+
+registerDescriptor(binding);
+```
+
+If you find yourself in need to create descriptors dynamically, share the same descriptor options between multiple instances, or define them at a time where the underlying reactive state doesn't exist yet, you can use **descriptor factories** patter.
+This pattern consist into wrapping the descriptor creation code into a wrapper function (the factory) which will then accept an object containing state refs later on, to create the actual instance of the descriptor.
+
+```ts
+import {
+  createDescriptor,
+  DescriptorFactoryFn,
+} from '@dreamonkey/vue-lx-forms';
+
+const initialState = {
+  username: undefined,
+  food: undefined,
+};
+
+const coldDescriptorList: DescriptorFactoryFn[] = [
+  (stateRefs) => {
+    return createDescriptor({
+      type: 'text',
+      label: 'Insert username',
+      model: stateRefs.username,
+    });
+  },
+  (stateRefs) => {
+    return createDescriptor({
+      type: 'text',
+      label: 'Insert favourite food',
+      model: stateRefs.food,
+    });
+  },
+];
+
+const { configuration, result, state } = useLxForms(initialState, (stateRefs) =>
+  coldDescriptorList.map((descriptorFactory) => descriptorFactory(modelRefs))
+);
+```
+
+#### TypeScript support
+
+You define a new descriptor interface by extending `BaseDescriptor`, providing an unique `type` value and the type of the model used by the descriptor.
+All additional properties are considered type-related options.
+
+```ts
+interface SelectDescriptor
+  // Fields rendered by this descriptor know the model must be read ad written as a string or undefined (the latter is implicit, all models can be undefined)
+  extends BaseDescriptor<string> {
+  type: 'select';
+  lazyOptionsFn: () => Promise<string[]>; // Type-related option, will be used by the component to retrieve the select options
 }
 ```
 
-Use a `component` options to override/manually specify which component should be used while rendering
-
-Adding custom global properties (TS-only)
+If your descriptor don't have any type-related option, you can use `SimpleDescriptor` instead.
 
 ```ts
-declare module "@dreamonkey/vue-lx-forms" {
+type TextDescriptor = SimpleDescriptor<'text', string>;
+```
+
+It's perfectly fine to have more than a descriptor type for a single descriptor, as long as all types share the same type-related options.
+
+```ts
+type TextLikeDescriptor = SimpleDescriptor<
+  'text' | 'textarea' | 'password',
+  string
+>;
+```
+
+If all your descriptors share common options, you can add them augmenting `CustomBaseDescriptorProperties` interface.
+
+```ts
+import '@dreamonkey/vue-lx-forms';
+
+declare module '@dreamonkey/vue-lx-forms' {
   interface CustomBaseDescriptorProperties {
-    required: boolean; // Every descriptor descriptor MUST have this property
-    hint?: string; // Every descriptor descriptor MAY have this property
+    required: boolean; // Every descriptor MUST have this property
+    placeholder?: string; // Every descriptor MAY have this property
   }
 }
 ```
 
-#### DescriptorFactories
+Once you defined all your descriptors interfaces, you'll need to augment `DescriptorMap` interface to map each descriptor type to its descriptor interface. Once you did this, TypeScript will use `type` value to provide autocompletion when creating descriptors using `createDescriptor` and when registering bindings.
+We hope to be able to automate this step in the future.
 
-Define a "cold" descriptor as a factory function, useful when stateRefs isn't available yet
-Has access to the whole reactive state object
-May return a computed, which is automatically unwrapped
+```ts
+import '@dreamonkey/vue-lx-forms';
 
-#### Descriptor
+declare module '@dreamonkey/vue-lx-forms' {
+  interface DescriptorMap {
+    select: SelectDescriptor;
+    text: TextDescriptor;
+  }
+}
+```
 
-Should be used to specify the TS type of the model of a given descriptor type, as well as descriptor-specific additional properties
-Represented in TS by `SimpleDescriptor` / `BaseDescriptor`
-TODO: add usage example
+<!-- ### Configuration
 
-### Configuration
-
+Configuration can react to changes into
 Cold vs hot configuration
 Configuration may be nested, use `useLxForms` to flat it out as the components resolver expect it to be as such
 
-`result` is a snapshot of the configuration mode at a given time
-`result` isn't guaranteed to contain all properties present in the initial object, only the used ones will be present
-`result` is meant to be renamed
-
-The difference between `reactiveModel` and `result` is that the latter only contains descriptors which are actually used into the configuration
-If the initial model contains an `id` property for which there isn't a corresponding descriptor in the configuration, the state won't have that property when accessed
 A conditionally rendered descriptor would lead to a conditionally present property into `result`
 
 ### Components
@@ -311,7 +441,7 @@ Automatically set `useDescriptorProps` and call `useDescriptor`
 
 ```ts
 defineDescriptorComponent<TextDescriptor>({
-  name: "TextField",
+  name: 'TextField',
   setup(props) {},
 });
 ```
@@ -357,16 +487,6 @@ Gets initial model and the descriptors list, returns configuration, readonly res
 
 ### Required
 
-## Built-in descriptor & components
-
-### Checkbox
-
-### Radio
-
-### Select
-
-### Text/Textarea/Password
-
 ## Common use cases
 
 ### Static configuration
@@ -387,6 +507,14 @@ Gets initial model and the descriptors list, returns configuration, readonly res
 > it will result in a new descriptor being created every time the computed property re-evaluate
 > and could cause an infinite recursion loop
 > Use "conditional" helper instead
+
+### Descriptors and components creation
+
+Make it work > make it fast > make it beautiful
+
+When having trouble abstracting it into the descriptor from the start, write everything into the component, then split concerns into composables and use custom descriptor descriptors properties or global properties to abstract it
+
+At the end of the process, components should contain only the logic needed to display and interact with descriptor, not the logic
 
 ### Using `descriptor.model` directly
 
