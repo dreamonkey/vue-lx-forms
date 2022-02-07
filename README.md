@@ -129,11 +129,7 @@ Provide the initial state and the descriptor list, you'll obtain the configurati
 
 ```ts
 // configuration.ts
-import {
-  createDescriptorList,
-  createDescriptor,
-  useLxForms,
-} from '@dreamonkey/vue-lx-forms';
+import { createDescriptor, useLxForms } from '@dreamonkey/vue-lx-forms';
 import { FormFieldType } from './models';
 
 // You must define all properties which will be used, even if set to undefined,
@@ -197,7 +193,7 @@ export const { ordersFields: configuration, order: result };
 ```vue
 <!-- form.vue -->
 <script lang="ts">
-import { computed, defineComponent, ref } from 'vue';
+import { defineComponent } from 'vue';
 import { ordersFields, order } from './configuration';
 
 export default defineComponent({
@@ -227,42 +223,7 @@ export default defineComponent({
 
 ## Core concepts
 
-### Internal state
-
-Each `Descriptor` uses a reactive variable to store the data provided by the user, which is actually an hook to property of a reactive shared state object.
-The shared state is generated from the initial state you provide to `useLxForms`, thus which properties you define there is important: always initialize optional properties to `undefined` if you need the system to react to changes on them.
-
-The reactive state is returned by `useLxForms` as `state` so you can tamper with it programmatically.
-Note that ideally `state` should only be mutated indirectly via models provided to each descriptor, and we only provide it as an escape hatch for complex scenarios.
-Take care if you find yourself tampering the `state` directly often, are you're probably using the system in the wrong way.
-
-Since `state` is a very generic name, we suggest you to always rename it to make it clear of which entity that state is holding data, keeping `State` suffix to let devs know it's the low level reactive object.
-
-```ts
-const { state: orderState } = useLxForms(/* ... */);
-
-orderState.food = 'Pizza';
-```
-
-### Result
-
-Whenever you need to extract the current configuration data, you should use the `result` computed property provided by `useLxForms`.
-You can think of `result` as a cleaned up version of `state`, where the data for all unused fields is left aside.
-
-Here're the main differences between `result` and `state`:
-
-- `result` is a computed ref, thus it's readonly and its value should be accessed via `result.value`, while `state` is a writable reactive object;
-- `result` will only contain properties bound to displayed fields, while `state` contains all properties present in the initial object;
-
-Since `result` is a very generic name, we suggest you to always rename it to make it clear of which entity you're representing an instance.
-
-```ts
-const { result: order } = useLxForms(/* ... */);
-
-console.log(order.value); // { food: 'Pizza', ... }
-```
-
-### Descriptor
+### Descriptors
 
 Descriptors are the building blocks of the whole system.
 Ideally, each descriptor should hold all information bits and GUI-independent code which will later be needed by a component when rendering it as part of the whole form.
@@ -411,15 +372,146 @@ declare module '@dreamonkey/vue-lx-forms' {
 }
 ```
 
-<!-- ### Configuration
+Descriptors interfaces are also useful to provide autocompletion into components, providing them as type parameter to `useDescriptorProps`
 
-Configuration can react to changes into
-Cold vs hot configuration
-Configuration may be nested, use `useLxForms` to flat it out as the components resolver expect it to be as such
+```vue
+<!-- text.vue -->
+<script lang="ts">
+import { useDescriptor, useDescriptorProps } from '@dreamonkey/vue-lx-forms';
+import { defineComponent } from 'vue';
+import { TextDescriptor } from './descriptors';
 
-A conditionally rendered descriptor would lead to a conditionally present property into `result`
+export default defineComponent({
+  name: 'TextField',
+  props: useDescriptorProps<TextDescriptor>(),
+  setup(props) {
+    // Thanks to the specified descriptors, `props.descriptor` now have all type-related options defined on TextDescriptor
+    return { ...useDescriptor(props.descriptor) };
+  },
+});
+</script>
+```
 
-### Components
+### Internal state
+
+Each `Descriptor` uses a reactive variable to store the data provided by the user, which is actually an hook to property of a reactive shared state object.
+The shared state is generated from the initial state you provide to `useLxForms`, thus which properties you define there is important: always initialize optional properties to `undefined` if you need the system to react to changes on them.
+
+The reactive state is returned by `useLxForms` as `state` so you can tamper with it programmatically.
+Note that ideally `state` should only be mutated indirectly via models provided to each descriptor, and we only provide it as an escape hatch for complex scenarios.
+Take care if you find yourself tampering the `state` directly often, are you're probably using the system in the wrong way.
+
+Since `state` is a very generic name, we suggest you to always rename it to make it clear of which entity that state is holding data, keeping `State` suffix to let devs know it's the low level reactive object.
+
+```ts
+const { state: orderState } = useLxForms(/* ... */);
+
+orderState.food = 'Pizza';
+```
+
+### Configuration
+
+`useLxForms` expects a function as its second parameter, which gets in input an object of refs bound to the internal state and should return an array where each item can _recursively_ be:
+
+- a descriptor;
+- an array of descriptors;
+- a ref resolving to a descriptor or an array of descriptors.
+
+The `configuration` returned from `useLxForms` is a computed which is based on that function, but where all reactive refs along the way are recursively unwrapped and all arrays flattened, to get a flat array of descriptors.
+This avoids many problems connected with the usage of recursive components and allows to render all configuration fields with a single `v-for` and `LxResolver`.
+Since we unwrap all refs and it's executed inside a computed body, the configuration will react to changes in any ref accessed into it.
+
+This allows you to create highly reactive forms, showing or hiding fields or groups of fields depending on the value of either an outside ref or one of the provided state-related refs.
+
+```ts
+import { createDescriptor, useLxForms } from '@dreamonkey/vue-lx-forms';
+import { computed } from 'vue';
+
+const orderInitialData = {
+  username: 'XXXX-000',
+  food: undefined,
+  drink: undefined,
+  details: undefined,
+};
+
+const { configuration, state } = useLxForms(
+  orderInitialData,
+  // Every property of "stateRefs" contains a ref initialized with the matching property of the initial state
+  (stateRefs) => [
+    // Single descriptor
+    createDescriptor({
+      type: FormFieldType.Text,
+      model: stateRefs.username,
+      label: 'Insert your username',
+    }),
+    // Array of descriptors
+    [
+      createDescriptor({
+        type: FormFieldType.Text,
+        model: stateRefs.food,
+        label: 'What do you want to eat?',
+      }),
+
+      // Reactive ref of some kind
+      // Equal to "createConditional"
+      computed(() =>
+        stateRefs.food.value !== undefined
+          ? createDescriptor({
+              type: FormFieldType.Text,
+              model: stateRefs.details,
+              label: 'Any details for the cook?',
+            })
+          : []
+      ),
+    ],
+    // Nested array of descriptors
+    [
+      [
+        createDescriptor({
+          type: FormFieldType.Text,
+          model: stateRefs.drink,
+          label: 'What do you want to drink?',
+        }),
+      ],
+    ],
+  ]
+);
+
+// >> configuration.value => [
+//   { /* username descriptor */ },
+//   { /* food descriptor */ },
+//   { /* drink descriptor */ },
+// ]
+
+state.food = 'Lasagna';
+
+// >> configuration.value => [
+//   { /* username descriptor */ },
+//   { /* food descriptor */ },
+//   { /* details descriptor */ },
+//   { /* drink descriptor */ },
+// ]
+```
+
+### Result
+
+Whenever you need to extract the current configuration data, you should use the `result` computed property provided by `useLxForms`.
+You can think of `result` as a cleaned up version of `state`, where the data for all unused descriptors is left aside.
+
+Here're the main differences between `result` and `state`:
+
+- `result` is a computed ref, thus it's readonly and its value should be accessed via `result.value`, while `state` is a writable reactive object;
+- `result` will only contain properties bound to displayed fields, while `state` contains all properties present in the initial object;
+
+Since `result` is a very generic name, we suggest you to always rename it to make it clear of which entity you're representing an instance.
+
+```ts
+const { result: order } = useLxForms(/* ... */);
+
+console.log(order.value); // { food: 'Pizza', ... }
+```
+
+<!-- ### Components
 
 ### Transformers
 
