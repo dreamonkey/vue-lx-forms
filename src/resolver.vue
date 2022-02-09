@@ -11,13 +11,13 @@
 
 <script>
 import { defineComponent } from 'vue';
-import { useDescriptorProps } from './field';
-import { getBindingByDescriptorType } from './register';
+import { getBindingByDescriptorType } from './helpers/bindings';
+import { getDescriptorProps } from './helpers/component';
 
 export default defineComponent({
   name: 'LxResolver',
   inheritAttrs: false,
-  props: useDescriptorProps(),
+  props: getDescriptorProps(),
   setup() {
     return { getBindingByDescriptorType };
   },

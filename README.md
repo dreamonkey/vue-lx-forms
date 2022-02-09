@@ -82,17 +82,21 @@ Note that a single descriptor can be shared by multiple descriptor types too.
 ```vue
 <!-- text.vue -->
 <script lang="ts">
-import { useDescriptor, useDescriptorProps } from '@dreamonkey/vue-lx-forms';
+import {
+  extractDescriptorModel,
+  getDescriptorProps,
+} from '@dreamonkey/vue-lx-forms';
 import { defineComponent } from 'vue';
 import { TextDescriptor } from './descriptors';
 
 export default defineComponent({
   name: 'TextField',
   inheritAttrs: false,
-  props: useDescriptorProps<TextDescriptor>(),
+  props: getDescriptorProps<TextDescriptor>(),
   setup(props) {
-    // Never use `descriptor` properties directly, especially `model`, always call `useDescriptor` helper
-    return { ...useDescriptor(props.descriptor) };
+    // Never use `descriptor.model` property directly, extract it using `extractDescriptorModel` helper
+    const model = extractDescriptorModel(props.descriptor);
+    return { model };
   },
 });
 </script>
@@ -372,24 +376,75 @@ declare module '@dreamonkey/vue-lx-forms' {
 }
 ```
 
-Descriptors interfaces are also useful to provide autocompletion into components, providing them as type parameter to `useDescriptorProps`
+Descriptors interfaces are also useful to provide autocompletion into components, providing them as type parameter to `getDescriptorProps`, as you can see in next section example.
+
+### Components
+
+Since most of a field logic is stored into the descriptor, you can easily switch between different component sets just by changing bindings, but a descriptor is useless without a paired component able to render it.
+
+All components you hook to the system must accept a `descriptor` prop and, if you use it in any way, extract `model` property from the descriptor. This last bit should happen outside Vue reactivity system, to avoid uncorrect unwrapping.
+
+Use `getDescriptorProps` to accomplish the first task.
+To get proper autocompletion, provide via the type parameter the interfaces of all descriptors that the component is able to manage.
+
+For the latter task, use `extractDescriptorModel` instead.
+It accepts a descriptor and returns its `model` property, correctly extracted outside of Vue reactivity system.
+This happens since we're accessing a property on a prop (which is a reactive object), and that property is a ref itself.
+**Never use `model` property directly from `descriptor` prop (eg. via `descriptor.model` inside templates), as it simply won't work as you expect, breaking the app.**
 
 ```vue
 <!-- text.vue -->
 <script lang="ts">
-import { useDescriptor, useDescriptorProps } from '@dreamonkey/vue-lx-forms';
+import {
+  extractDescriptorModel,
+  getDescriptorProps,
+} from '@dreamonkey/vue-lx-forms';
 import { defineComponent } from 'vue';
-import { TextDescriptor } from './descriptors';
+import { TextDescriptor, PasswordDescriptor } from './descriptors';
 
 export default defineComponent({
   name: 'TextField',
-  props: useDescriptorProps<TextDescriptor>(),
+  props: getDescriptorProps<TextDescriptor | PasswordDescriptor>(),
   setup(props) {
-    // Thanks to the specified descriptors, `props.descriptor` now have all type-related options defined on TextDescriptor
-    return { ...useDescriptor(props.descriptor) };
+    const model = extractDescriptorModel(props.descriptor);
+
+    // Thanks to the specified descriptors interfaces, `props.descriptor` have autocomplete for
+    // all type-related options if you use `type` as discriminant for the union
+    if (props.descriptor.type === 'text') {
+      // ... text-specific actions
+    } else {
+      // ... password-specific actions
+    }
+
+    return { model };
   },
 });
 </script>
+
+<template>
+  <label>
+    {{ descriptor.label }}
+    <input v-model="model" type="text" />
+  </label>
+</template>
+```
+
+To allow props pass-through to nested elements, add `inheritAttrs: false` to the component and `v-bind` its `$attrs` on the input element.
+
+```vue
+<script lang="ts">
+export default defineComponent({
+  inheritAttrs: false,
+  // ... other options
+});
+</script>
+
+<template>
+  <label>
+    {{ descriptor.label }}
+    <input v-model="model" type="text" v-bind="$attrs" />
+  </label>
+</template>
 ```
 
 ### Internal state
@@ -511,32 +566,17 @@ const { result: order } = useLxForms(/* ... */);
 console.log(order.value); // { food: 'Pizza', ... }
 ```
 
-<!-- ### Components
-
 ### Transformers
 
 ### LxResolver
 
 ## Component helpers
 
-### `useDescriptorProps`
+<!-- ### `getDescriptorProps`
 
-Must be a function, cannot be `useDescriptor.props` as we need to type it
-TODO: we could use `defineDescriptorComponent` to almost never use this directly
+Must be a function as we need to type it
 
-### `useDescriptor`
-
-### `defineDescriptorComponent`
-
-TODO: this may help to reduce verbosity for new components and avoid problems with `descriptor.model` usage without calling `useDescriptor`
-Automatically set `useDescriptorProps` and call `useDescriptor`
-
-```ts
-defineDescriptorComponent<TextDescriptor>({
-  name: 'TextField',
-  setup(props) {},
-});
-```
+### `extractDescriptorModel`
 
 ### `registerDescriptors`
 
@@ -607,9 +647,3 @@ Make it work > make it fast > make it beautiful
 When having trouble abstracting it into the descriptor from the start, write everything into the component, then split concerns into composables and use custom descriptor descriptors properties or global properties to abstract it
 
 At the end of the process, components should contain only the logic needed to display and interact with descriptor, not the logic
-
-### Using `descriptor.model` directly
-
-### Passing through additional attributes/listeners to the underlying input components
-
-Components must have `inheritAttrs: false` set and apply `v-bind="$attrs"` to the input -->

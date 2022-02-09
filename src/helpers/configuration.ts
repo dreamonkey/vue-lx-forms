@@ -3,8 +3,8 @@ import {
   Descriptor,
   DescriptorWithoutId,
   ReactiveDescriptorList,
-} from './models';
-import { getBindingByDescriptorType } from './register';
+} from '../models';
+import { getBindingByDescriptorType } from './bindings';
 
 // We need an unique id for each field, to tell Vue to avoid re-using components
 let _fieldCounter = 0;

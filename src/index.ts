@@ -1,9 +1,9 @@
 import { install } from './install';
 
 export * from './composable';
-export * from './field';
-export * from './helpers';
+export * from './helpers/component';
+export * from './helpers/configuration';
+export * from './helpers/bindings';
 export * from './models';
-export * from './register';
 
 export default install;

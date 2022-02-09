@@ -1,5 +1,5 @@
 import { castArray } from 'lodash-es';
-import { Binding, DescriptorType } from './models';
+import { Binding, DescriptorType } from '../models';
 
 const _bindingsRegistry: { [index in DescriptorType]?: Binding } = {};
 
