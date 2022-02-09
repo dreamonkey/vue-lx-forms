@@ -472,8 +472,7 @@ orderState.food = 'Pizza';
 - an array of descriptors;
 - a ref resolving to a descriptor or an array of descriptors.
 
-The `configuration` returned from `useLxForms` is a computed which is based on that function, but where all reactive refs along the way are recursively unwrapped and all arrays flattened, to get a flat array of descriptors.
-This avoids many problems connected with the usage of recursive components and allows to render all configuration fields with a single `v-for` and `LxResolver`.
+The `configuration` returned from `useLxForms` is a computed which is based on that function, but where all reactive refs along the way are recursively unwrapped and all arrays flattened, to get a flat array of descriptors. This avoids many problems connected with the usage of recursive components and makes it really easy to render the configuration.
 Since we unwrap all refs and it's executed inside a computed body, the configuration will react to changes in any ref accessed into it.
 
 This allows you to create highly reactive forms, showing or hiding fields or groups of fields depending on the value of either an outside ref or one of the provided state-related refs.
@@ -548,6 +547,47 @@ state.food = 'Lasagna';
 // ]
 ```
 
+### Transformers
+
+We already covered how you can use conditional logic into a configuration to display or hide descriptors, and how you can extract it to helper functions as `createConditional`.
+
+However, sometimes the conditional logic is strictly related to a descriptor and it would be bothersome or not possible to apply the descriptor and an helper function together all the times.
+To cover this use case you can use transformers.
+
+A transformer is a function that accepts a descriptor as input and returns either a descriptor, an array of descriptors or a computed ref containing either.
+
+The build-in [binary descriptor](https://github.com/dreamonkey/vue-lx-forms/blob/main/src/transformers/binary.ts) is a good example of how you can use this feature.
+
+You can register a transformer when registering bindings for a particular descriptor type.
+`createDescriptor` will automatically execute it whenever a match is found.
+
+```ts
+const binding: Binding = {
+  type: 'binary',
+  component: BinaryField,
+  transformer: binaryTransformer,
+};
+
+registerDescriptor(binding);
+```
+
+### LxResolver
+
+Once you got the whole system set up, and you generated a configuration, you need to render that configuration.
+`LxResolver` component does just that: when provided with a descriptor, it resolves the components based on the descriptor type and your bindings, then render it providing the descriptor as prop.
+
+Since the configuration is flat, a simple `v-for` is what you need to show all fields of the configuration.
+
+```vue
+<template>
+  <lx-resolver
+    v-for="descriptor in configuration"
+    :key="descriptor.id"
+    :descriptor="descriptor"
+  />
+</template>
+```
+
 ### Result
 
 Whenever you need to extract the current configuration data, you should use the `result` computed property provided by `useLxForms`.
@@ -566,13 +606,19 @@ const { result: order } = useLxForms(/* ... */);
 console.log(order.value); // { food: 'Pizza', ... }
 ```
 
-### Transformers
+## Caveats and pitfalls
 
-### LxResolver
+**Never use a method generating a new descriptor object INSIDE a computed function body**
+It will result in a new descriptor being created every time the computed property re-evaluate
+and could cause an infinite recursion loop
+Use `createConditional` helper instead
+
+<!--
+TODO:
 
 ## Component helpers
 
-<!-- ### `getDescriptorProps`
+### `getDescriptorProps`
 
 Must be a function as we need to type it
 
@@ -627,19 +673,6 @@ Gets initial model and the descriptors list, returns configuration, readonly res
 
 ### Apply a behaviour to all descriptors
 
-### Multiple descriptor types sharing the same descriptor
-
-### Multiple descriptor types with different descriptor sharing the same component
-
-### Multiple descriptor types sharing the same descriptor
-
-## Caveats and pitfalls
-
-> DISCLAIMER: never use a method generating a new descriptor object INSIDE a computed function body,
-> it will result in a new descriptor being created every time the computed property re-evaluate
-> and could cause an infinite recursion loop
-> Use "conditional" helper instead
-
 ### Descriptors and components creation
 
 Make it work > make it fast > make it beautiful
@@ -647,3 +680,4 @@ Make it work > make it fast > make it beautiful
 When having trouble abstracting it into the descriptor from the start, write everything into the component, then split concerns into composables and use custom descriptor descriptors properties or global properties to abstract it
 
 At the end of the process, components should contain only the logic needed to display and interact with descriptor, not the logic
+-->
