@@ -1,6 +1,6 @@
 {
   "name": "@dreamonkey/vue-lx-forms",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Builder for highly reactive forms following a bring-your-components approach. Based on Vue reactivity, full TypeScript support",
   "files": [
     "dist"
